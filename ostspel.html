@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -234,7 +233,7 @@ async function showLeaderboard() {
         status.textContent = players.length
             ? "🌍 Global leaderboard"
             : "No scores yet. Be first!";
-    } catch (error) {
+    }  {
         console.error("Leaderboard error:", error);
         status.textContent = "Couldn't load scores. Check database setup.";
     }
