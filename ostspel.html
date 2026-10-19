@@ -1,22 +1,24 @@
-html
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cheese Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🧀 Cheese Game</title>
 
 <style>
+* { box-sizing: border-box; }
+
 body {
     margin: 0;
     overflow: hidden;
     font-family: Arial, sans-serif;
     text-align: center;
     background: linear-gradient(135deg, #065f46, #10b981);
-    height: 100vh;
+    min-height: 100vh;
 }
 
-h1 { color: white; margin-top: 15px; }
+h1 { color: white; margin-top: 18px; }
 
 p {
     color: white;
@@ -37,26 +39,30 @@ p {
     border-radius: 20px;
     padding: 10px;
     cursor: pointer;
+    touch-action: manipulation;
 }
 
 #leaderboard {
     position: fixed;
-    top: 15px;
-    right: 15px;
+    top: 12px;
+    right: 12px;
     background: white;
     color: #065f46;
-    padding: 15px;
+    padding: 14px;
     border-radius: 15px;
-    width: 210px;
+    width: 220px;
     text-align: left;
+    z-index: 2;
+    box-shadow: 0 4px 12px #0002;
 }
 
 #leaderboard h2 {
     text-align: center;
     margin: 0 0 10px;
+    font-size: 19px;
 }
 
-#leaderboard ol {
+#leaderList {
     margin: 0;
     padding-left: 25px;
     font-weight: bold;
@@ -65,8 +71,9 @@ p {
 
 #leaderStatus {
     font-size: 12px;
-    color: #065f46;
     font-weight: normal;
+    color: #065f46;
+    margin-top: 8px;
 }
 
 #messageBox {
@@ -77,46 +84,56 @@ p {
     transform: translate(-50%, -50%);
     background: white;
     color: #065f46;
-    padding: 25px;
+    padding: 24px;
     border-radius: 20px;
-    z-index: 9999;
-    max-width: 85%;
+    z-index: 10;
+    width: min(90%, 400px);
+    box-shadow: 0 8px 30px #0004;
 }
 
 #messageBox p { color: #065f46; }
 
 #playerName {
-    padding: 10px;
-    max-width: 80%;
+    width: 90%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px;
 }
 
-#playAgainBtn, #backBtn, #saveBtn {
+#saveBtn, #playAgainBtn, #backBtn {
     background: #10b981;
     color: white;
     border: none;
-    padding: 12px 18px;
+    padding: 12px 16px;
     border-radius: 10px;
     font-weight: bold;
     cursor: pointer;
     text-decoration: none;
     display: inline-block;
-    margin: 8px;
+    margin: 7px 3px;
 }
 
 button:disabled {
-    opacity: 0.6;
+    opacity: .6;
     cursor: wait;
 }
 
-@media (max-width: 768px) {
+#saveStatus {
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
     #leaderboard {
-        width: 150px;
+        width: 155px;
         font-size: 12px;
-        padding: 10px;
-        top: 8px;
-        right: 8px;
+        padding: 9px;
+        top: 7px;
+        right: 7px;
     }
 
+    #leaderboard h2 { font-size: 15px; }
     #cheese { font-size: 42px; }
 }
 </style>
@@ -132,16 +149,18 @@ button:disabled {
 <div id="leaderboard">
     <h2>🏆 Global Top 5</h2>
     <ol id="leaderList"></ol>
-    <div id="leaderStatus">Loading scores...</div>
+    <div id="leaderStatus">Connecting...</div>
 </div>
 
-<button id="cheese" onclick="eatCheese()">🧀</button>
+<button id="cheese" aria-label="Eat cheese"
+        onclick="eatCheese()">🧀</button>
 
 <div id="messageBox">
     <h2>⏰ Time's Up!</h2>
     <p>Your Score: <span id="finalScore">0</span></p>
     <input id="playerName" maxlength="25"
-           placeholder="Enter your name">
+           placeholder="Enter your name"
+           autocomplete="nickname">
     <br><br>
     <button id="saveBtn" onclick="saveScore()">Save Score</button>
     <button id="playAgainBtn" onclick="playAgain()">🔁 Play Again</button>
@@ -158,10 +177,9 @@ const SUPABASE_URL =
     "https://qjgwkvrtmlqdqwehzlfe.supabase.co";
 
 const SUPABASE_KEY =
-    "PASTE_YOUR_SB_PUBLISHABLE_KEY_HERE";
+    "sb_publishable_4sQgHCAuVRcxgRdOmzySHA_vbXzfWRC";
 
-const SCORES_URL =
-    SUPABASE_URL + "/rest/v1/cheese_scores";
+const SCORES_URL = SUPABASE_URL + "/rest/v1/cheese_scores";
 
 let score = 0;
 let timeLeft = 60;
@@ -172,7 +190,7 @@ let scoreSaved = false;
 const cheese = document.getElementById("cheese");
 const music = document.getElementById("music");
 
-async function supabaseRequest(url, options = {}) {
+async function dbRequest(url, options = {}) {
     const response = await fetch(url, {
         ...options,
         headers: {
@@ -183,9 +201,8 @@ async function supabaseRequest(url, options = {}) {
     });
 
     if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error("Supabase error " +
-            response.status + ": " + errorText);
+        const details = await response.text();
+        throw new Error("HTTP " + response.status + ": " + details);
     }
 
     if (response.status === 204) return null;
@@ -198,38 +215,35 @@ async function showLeaderboard() {
     const list = document.getElementById("leaderList");
     const status = document.getElementById("leaderStatus");
 
-    status.textContent = "Loading scores...";
-
     try {
-        const url = SCORES_URL +
+        const query = SCORES_URL +
             "?select=player_name,score,created_at" +
             "&order=score.desc,created_at.asc" +
             "&limit=5";
 
-        const players = await supabaseRequest(url);
+        const players = await dbRequest(query);
 
         list.replaceChildren();
 
         players.forEach(function(player) {
-            const li = document.createElement("li");
-            li.textContent = player.player_name +
-                " - " + player.score;
-            list.appendChild(li);
+            const item = document.createElement("li");
+            item.textContent = player.player_name + " - " + player.score;
+            list.appendChild(item);
         });
 
-        if (players.length === 0) {
-            status.textContent = "No scores yet. Be the first!";
-        } else {
-            status.textContent = "Live global leaderboard";
-        }
+        status.textContent = players.length
+            ? "🌍 Global leaderboard"
+            : "No scores yet. Be first!";
     } catch (error) {
-        console.error(error);
-        status.textContent =
-            "Could not load scores. Check connection and policies.";
+        console.error("Leaderboard error:", error);
+        status.textContent = "Couldn't load scores. Check database setup.";
     }
 }
 
 showLeaderboard();
+
+// Refresh the shared leaderboard every 30 seconds.
+setInterval(showLeaderboard, 30000);
 
 const timerInterval = setInterval(function() {
     if (timeLeft > 0) timeLeft--;
@@ -240,7 +254,6 @@ const timerInterval = setInterval(function() {
         clearInterval(timerInterval);
         gameOver = true;
         cheese.style.display = "none";
-
         document.getElementById("finalScore").textContent = score;
         document.getElementById("messageBox").style.display = "block";
     }
@@ -251,7 +264,7 @@ function eatCheese() {
 
     if (!musicStarted) {
         music.play().catch(function(error) {
-            console.log("Music could not autoplay:", error);
+            console.log("Music playback unavailable:", error);
         });
         musicStarted = true;
     }
@@ -271,43 +284,37 @@ function eatCheese() {
 async function saveScore() {
     if (scoreSaved) return;
 
-    const nameInput = document.getElementById("playerName");
-    const saveButton = document.getElementById("saveBtn");
+    const nameField = document.getElementById("playerName");
+    const saveBtn = document.getElementById("saveBtn");
     const status = document.getElementById("saveStatus");
 
-    const name = nameInput.value.trim() || "Customer";
+    const name = nameField.value.trim().slice(0, 25) || "Customer";
 
-    if (SUPABASE_KEY === "sb_publishable_4sQgHCAuVRcxgRdOmzySHA_vbXzfWRC") {
-        status.textContent = "Add your publishable key in the code first.";
-        return;
-    }
-
-    saveButton.disabled = true;
-    status.textContent = "Saving your score...";
+    saveBtn.disabled = true;
+    status.textContent = "Saving score...";
 
     try {
-        await supabaseRequest(SCORES_URL, {
+        await dbRequest(SCORES_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "Prefer": "return=minimal"
             },
             body: JSON.stringify({
-                player_name: name.slice(0, 25),
+                player_name: name,
                 score: score
             })
         });
 
         scoreSaved = true;
-        status.textContent = "Score saved! 🏆";
-        saveButton.textContent = "Score Saved";
-
+        status.textContent = "✅ Score saved to the global leaderboard!";
+        saveBtn.textContent = "Saved!";
         await showLeaderboard();
     } catch (error) {
-        console.error(error);
+        console.error("Save score error:", error);
         status.textContent =
-            "Could not save score. Please try again.";
-        saveButton.disabled = false;
+            "Couldn't save. Check Supabase table and permissions.";
+        saveBtn.disabled = false;
     }
 }
 
